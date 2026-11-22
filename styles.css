@@ -412,3 +412,40 @@ th {
   margin-top: 20px;
 }
 
+.toggle-closed {
+  float: right;
+  font-weight: normal;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.closed-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+tr.row-closed {
+  opacity: 0.65;
+  background-color: #f8fafc;
+}
+
+.btn-status {
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: #dcfce7;
+  color: var(--green);
+  font-weight: 600;
+}
+
+.btn-status.closed {
+  background: #e2e8f0;
+  color: #475569;
+}
