@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Control de Inversiones</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1>Control de Inversiones</h1>
+    <div class="toolbar">
+      <button id="btnNew">Nueva Entrada (<kbd>F1</kbd>)</button>
+      <button id="btnEdit" class="secondary" disabled>Modificar (<kbd>F2</kbd>)</button>
+      <button id="btnDelete" class="danger" disabled>Eliminar (<kbd>Supr</kbd>)</button>
+      <div class="divider"></div>
+      <button id="btnExportJSON" class="outline" title="Guardar copia de seguridad">Exportar JSON</button>
+      <button id="btnImportJSON" class="outline" title="Restaurar copia de seguridad">Importar JSON</button>
+      <button id="btnExportCSV" class="outline" title="Abrir en Excel">Exportar CSV</button>
+      <input type="file" id="importFile" accept=".json" hidden>
+    </div>
+  </header>
+
+  <!-- Resumen General de Cartera -->
+  <section class="portfolio-summary">
+    <div class="summary-card">
+      <span>Capital Neto Invertido</span>
+      <strong id="globalNetInvested">0,00 €</strong>
+    </div>
+    <div class="summary-card">
+      <span>Valor Actual Cartera</span>
+      <strong id="globalCurrentValue">0,00 €</strong>
+    </div>
+    <div class="summary-card">
+      <span>Beneficio / Pérdida</span>
+      <strong id="globalProfit">0,00 €</strong>
+    </div>
+    <div class="summary-card highlight">
+      <span>Rentabilidad Global (XIRR)</span>
+      <strong id="globalXirr">-</strong>
+    </div>
+  </section>
+
+  <!-- Comparativa por Producto (XIRR) -->
+  <details class="products-overview" open>
+    <summary>Resumen y Comparativa por Producto (haz clic en el valor actual para actualizarlo)</summary>
+    <div class="table-wrapper inner-table">
+      <table>
+        <thead>
+          <tr>
+            <th>Producto</th>
+            <th>Plataforma</th>
+            <th>Invertido</th>
+            <th>Devuelto</th>
+            <th>Peso (%)</th>
+            <th>Valor Actual (€)</th>
+            <th>XIRR (Anual)</th>
+          </tr>
+        </thead>
+        <tbody id="productsSummaryBody"></tbody>
+      </table>
+    </div>
+  </details>
+
+  <!-- Filtros de Movimientos -->
+  <section class="filters">
+    <div class="filter-group">
+      <label for="filterYear">Año</label>
+      <select id="filterYear">
+        <option value="">Todos los años</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label for="filterPlatform">Plataforma</label>
+      <select id="filterPlatform">
+        <option value="">Todas las plataformas</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label for="filterProduct">Producto</label>
+      <select id="filterProduct">
+        <option value="">Todos los productos</option>
+      </select>
+    </div>
+  </section>
+
+  <!-- Tabla de Entradas -->
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>Fecha</th>
+          <th>Operación</th>
+          <th>Producto</th>
+          <th>Plataforma</th>
+          <th>Importe</th>
+        </tr>
+      </thead>
+      <tbody id="entriesBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Modal Crear / Modificar -->
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modalTitle">Nueva Entrada</h2>
+      <button type="button" class="secondary" id="btnCloseTop">Cerrar (Esc)</button>
+    </div>
+
+    <form id="entryForm">
+      <div class="form-grid">
+        <div class="filter-group">
+          <label for="entryDate">Fecha</label>
+          <input type="date" id="entryDate" required>
+        </div>
+
+        <div class="filter-group">
+          <label for="entryAmount">Importe (€)</label>
+          <input type="number" id="entryAmount" step="0.01" min="0.01" required placeholder="0.00">
+        </div>
+
+        <div class="filter-group">
+          <label for="entryType">Tipo de operación</label>
+          <select id="entryType" required>
+            <option value="SUSCRIPCIÓN">SUSCRIPCIÓN</option>
+            <option value="REEMBOLSO">REEMBOLSO</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label for="entryProduct">Producto de inversión</label>
+          <select id="entryProduct" required></select>
+        </div>
+
+        <!-- Campos para Nuevo Producto -->
+        <div class="new-product-box" id="newProductBox">
+          <div class="filter-group">
+            <label for="newProdName">Nombre del producto</label>
+            <input type="text" id="newProdName" placeholder="Ej. MSCI World Index">
+          </div>
+          <div class="filter-group">
+            <label for="newProdPlatform">Plataforma</label>
+            <input type="text" id="newProdPlatform" placeholder="Ej. MyInvestor">
+          </div>
+        </div>
+      </div>
+
+      <!-- Resumen dinámico del producto seleccionado -->
+      <div class="product-stats" id="productStats">
+        <div class="current-val-bar">
+          <label for="modalCurrentValue">Valor actual de mercado en este producto (€):</label>
+          <input type="number" id="modalCurrentValue" step="0.01" min="0" placeholder="0.00">
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-card">
+            <span>% Cartera</span>
+            <strong id="statPct">0%</strong>
+          </div>
+          <div class="stat-card">
+            <span>Total Invertido</span>
+            <strong id="statInvested">0,00 €</strong>
+          </div>
+          <div class="stat-card">
+            <span>Total Devuelto</span>
+            <strong id="statReturned">0,00 €</strong>
+          </div>
+          <div class="stat-card">
+            <span>Fecha Apertura</span>
+            <strong id="statOpenDate">-</strong>
+          </div>
+          <div class="stat-card highlight">
+            <span>XIRR Producto</span>
+            <strong id="statXirr">-</strong>
+          </div>
+        </div>
+
+        <label class="history-label">Historial en este producto:</label>
+        <div class="mini-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Operación</th>
+                <th>Importe</th>
+              </tr>
+            </thead>
+            <tbody id="productHistoryBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="secondary" id="btnCancel">Cancelar</button>
+        <button type="submit">Guardar Entrada</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+
+</body>
+</html>
+
