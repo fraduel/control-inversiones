@@ -2,18 +2,36 @@ import { state, saveData } from './state.js';
 import { fmtCurrency, fmtPct, calculateXIRR } from './finance.js';
 
 export function renderPortfolioOverview() {
-  const totalInvested = state.entries
+  const fPlat = document.getElementById('filterPlatform').value;
+  const fProd = document.getElementById('filterProduct').value;
+
+  // Filtrar productos según plataforma y producto seleccionados
+  const filteredProducts = state.products.filter((p) => {
+    if (fPlat && p.platform !== fPlat) return false;
+    if (fProd && p.id !== fProd) return false;
+    return true;
+  });
+
+  const allowedProductIds = new Set(filteredProducts.map((p) => p.id));
+
+  // Filtrar entradas pertenecientes a esos productos
+  const filteredEntries = state.entries.filter((e) => allowedProductIds.has(e.productId));
+
+  const totalInvested = filteredEntries
     .filter((e) => e.type === 'SUSCRIPCIÓN')
     .reduce((sum, e) => sum + e.amount, 0);
 
-  const totalReturned = state.entries
+  const totalReturned = filteredEntries
     .filter((e) => e.type === 'REEMBOLSO')
     .reduce((sum, e) => sum + e.amount, 0);
 
   const netInvested = totalInvested - totalReturned;
-  const totalCurrentVal = state.products.reduce((sum, p) => sum + (parseFloat(p.currentValue) || 0), 0);
+  const totalCurrentVal = filteredProducts.reduce(
+    (sum, p) => sum + (parseFloat(p.currentValue) || 0),
+    0
+  );
   const profit = totalCurrentVal + totalReturned - totalInvested;
-  const globalXirr = calculateXIRR(state.entries, totalCurrentVal);
+  const globalXirr = calculateXIRR(filteredEntries, totalCurrentVal);
 
   document.getElementById('globalNetInvested').textContent = fmtCurrency(netInvested);
   document.getElementById('globalCurrentValue').textContent = fmtCurrency(totalCurrentVal);
@@ -27,19 +45,25 @@ export function renderPortfolioOverview() {
   xirrEl.className = globalXirr > 0 ? 'pos' : globalXirr < 0 ? 'neg' : '';
 
   const tbody = document.getElementById('productsSummaryBody');
-  if (state.products.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" class="empty-msg">No hay productos registrados.</td></tr>';
+  if (filteredProducts.length === 0) {
+    tbody.innerHTML =
+      '<tr><td colspan="7" class="empty-msg">No hay productos para el filtro seleccionado.</td></tr>';
     return;
   }
 
-  tbody.innerHTML = state.products
+  tbody.innerHTML = filteredProducts
     .map((prod) => {
-      const pEntries = state.entries.filter((e) => e.productId === prod.id);
-      const inv = pEntries.filter((e) => e.type === 'SUSCRIPCIÓN').reduce((s, e) => s + e.amount, 0);
-      const ret = pEntries.filter((e) => e.type === 'REEMBOLSO').reduce((s, e) => s + e.amount, 0);
+      const pEntries = filteredEntries.filter((e) => e.productId === prod.id);
+      const inv = pEntries
+        .filter((e) => e.type === 'SUSCRIPCIÓN')
+        .reduce((s, e) => s + e.amount, 0);
+      const ret = pEntries
+        .filter((e) => e.type === 'REEMBOLSO')
+        .reduce((s, e) => s + e.amount, 0);
       const curVal = parseFloat(prod.currentValue) || 0;
       const pXirr = calculateXIRR(pEntries, curVal);
 
+      // El peso (%) se calcula sobre el subconjunto filtrado seleccionado
       const baseTotal = totalCurrentVal > 0 ? totalCurrentVal : Math.max(0, netInvested);
       const baseProd = totalCurrentVal > 0 ? curVal : Math.max(0, inv - ret);
       const weight = baseTotal > 0 ? ((baseProd / baseTotal) * 100).toFixed(1) + '%' : '0%';
