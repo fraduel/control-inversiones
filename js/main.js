@@ -45,6 +45,20 @@ function initApp() {
     if (val !== '__NEW__') updateProductStats(val);
   });
   document.getElementById('entryForm')?.addEventListener('submit', saveEntry);
+  document.getElementById('showClosedProducts')?.addEventListener('change', renderPortfolioOverview);
+
+  document.getElementById('modalProductClosed')?.addEventListener('change', (e) => {
+    const valInput = document.getElementById('modalCurrentValue');
+    if (e.target.checked) {
+      valInput.value = 0;
+      valInput.disabled = true;
+    } else {
+      valInput.disabled = false;
+    }
+    const prodId = document.getElementById('entryProduct').value;
+    if (prodId !== '__NEW__') updateProductStats(prodId);
+  });
+
 
   window.addEventListener(
     'keydown',
