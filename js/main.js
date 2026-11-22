@@ -1,15 +1,18 @@
 import { state } from './state.js';
+
 import {
   openModal,
   editSelected,
   deleteSelected,
   closeModal,
   renderTable,
+  renderPortfolioOverview,
   handleProductChange,
   updateProductStats,
   saveEntry,
   refreshAll
 } from './ui.js';
+
 import { exportJSON, importJSON, exportCSV } from './backup.js';
 
 function initApp() {
@@ -26,9 +29,15 @@ function initApp() {
   document.getElementById('importFile')?.addEventListener('change', importJSON);
   document.getElementById('btnExportCSV')?.addEventListener('click', exportCSV);
 
-  document.getElementById('filterYear')?.addEventListener('change', renderTable);
-  document.getElementById('filterPlatform')?.addEventListener('change', renderTable);
-  document.getElementById('filterProduct')?.addEventListener('change', renderTable);
+    document.getElementById('filterYear')?.addEventListener('change', renderTable);
+  document.getElementById('filterPlatform')?.addEventListener('change', () => {
+    renderPortfolioOverview();
+    renderTable();
+  });
+  document.getElementById('filterProduct')?.addEventListener('change', () => {
+    renderPortfolioOverview();
+    renderTable();
+  });
 
   document.getElementById('entryProduct')?.addEventListener('change', handleProductChange);
   document.getElementById('modalCurrentValue')?.addEventListener('input', () => {
