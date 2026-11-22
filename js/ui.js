@@ -4,17 +4,16 @@ import { fmtCurrency, fmtPct, calculateXIRR } from './finance.js';
 export function renderPortfolioOverview() {
   const fPlat = document.getElementById('filterPlatform').value;
   const fProd = document.getElementById('filterProduct').value;
+  const showClosed = document.getElementById('showClosedProducts')?.checked ?? true;
 
-  // Filtrar productos según plataforma y producto seleccionados
-  const filteredProducts = state.products.filter((p) => {
+  // Filtrar productos según plataforma y producto seleccionados (para los totales globales)
+  const matchingProducts = state.products.filter((p) => {
     if (fPlat && p.platform !== fPlat) return false;
     if (fProd && p.id !== fProd) return false;
     return true;
   });
 
-  const allowedProductIds = new Set(filteredProducts.map((p) => p.id));
-
-  // Filtrar entradas pertenecientes a esos productos
+  const allowedProductIds = new Set(matchingProducts.map((p) => p.id));
   const filteredEntries = state.entries.filter((e) => allowedProductIds.has(e.productId));
 
   const totalInvested = filteredEntries
@@ -26,8 +25,8 @@ export function renderPortfolioOverview() {
     .reduce((sum, e) => sum + e.amount, 0);
 
   const netInvested = totalInvested - totalReturned;
-  const totalCurrentVal = filteredProducts.reduce(
-    (sum, p) => sum + (parseFloat(p.currentValue) || 0),
+  const totalCurrentVal = matchingProducts.reduce(
+    (sum, p) => sum + (p.closed ? 0 : parseFloat(p.currentValue) || 0),
     0
   );
   const profit = totalCurrentVal + totalReturned - totalInvested;
@@ -44,14 +43,17 @@ export function renderPortfolioOverview() {
   xirrEl.textContent = fmtPct(globalXirr);
   xirrEl.className = globalXirr > 0 ? 'pos' : globalXirr < 0 ? 'neg' : '';
 
+  // Productos visibles en la tabla según el checkbox "Mostrar cerrados"
+  const visibleProducts = matchingProducts.filter((p) => showClosed || !p.closed);
+
   const tbody = document.getElementById('productsSummaryBody');
-  if (filteredProducts.length === 0) {
+  if (visibleProducts.length === 0) {
     tbody.innerHTML =
-      '<tr><td colspan="7" class="empty-msg">No hay productos para el filtro seleccionado.</td></tr>';
+      '<tr><td colspan="8" class="empty-msg">No hay productos para mostrar.</td></tr>';
     return;
   }
 
-  tbody.innerHTML = filteredProducts
+  tbody.innerHTML = visibleProducts
     .map((prod) => {
       const pEntries = filteredEntries.filter((e) => e.productId === prod.id);
       const inv = pEntries
@@ -60,17 +62,20 @@ export function renderPortfolioOverview() {
       const ret = pEntries
         .filter((e) => e.type === 'REEMBOLSO')
         .reduce((s, e) => s + e.amount, 0);
-      const curVal = parseFloat(prod.currentValue) || 0;
+      const curVal = prod.closed ? 0 : parseFloat(prod.currentValue) || 0;
       const pXirr = calculateXIRR(pEntries, curVal);
 
-      // El peso (%) se calcula sobre el subconjunto filtrado seleccionado
       const baseTotal = totalCurrentVal > 0 ? totalCurrentVal : Math.max(0, netInvested);
       const baseProd = totalCurrentVal > 0 ? curVal : Math.max(0, inv - ret);
-      const weight = baseTotal > 0 ? ((baseProd / baseTotal) * 100).toFixed(1) + '%' : '0%';
+      const weight = prod.closed
+        ? '0%'
+        : baseTotal > 0
+          ? ((baseProd / baseTotal) * 100).toFixed(1) + '%'
+          : '0%';
       const xirrClass = pXirr > 0 ? 'pos' : pXirr < 0 ? 'neg' : '';
 
       return `
-        <tr>
+        <tr class="${prod.closed ? 'row-closed' : ''}">
           <td><strong>${prod.name}</strong></td>
           <td>${prod.platform}</td>
           <td class="amount">${fmtCurrency(inv)}</td>
@@ -78,25 +83,47 @@ export function renderPortfolioOverview() {
           <td>${weight}</td>
           <td>
             <input type="number" class="inline-val-input" step="0.01" min="0"
-              value="${curVal}" data-prod-id="${prod.id}" title="Editar valor actual">
+              value="${curVal}" data-prod-id="${prod.id}" ${prod.closed ? 'disabled' : ''}
+              title="${prod.closed ? 'Producto cerrado' : 'Editar valor actual'}">
           </td>
           <td class="amount ${xirrClass}">${fmtPct(pXirr)}</td>
+          <td>
+            <button type="button" class="btn-status ${prod.closed ? 'closed' : ''}"
+              data-toggle-id="${prod.id}" title="Haz clic para cambiar estado">
+              ${prod.closed ? 'Cerrado' : 'Activo'}
+            </button>
+          </td>
         </tr>
       `;
     })
     .join('');
 
+  // Cambiar valor actual desde la tabla
   tbody.querySelectorAll('.inline-val-input').forEach((input) => {
     input.addEventListener('change', (e) => {
       const prod = state.products.find((p) => p.id === e.target.dataset.prodId);
-      if (prod) {
+      if (prod && !prod.closed) {
         prod.currentValue = parseFloat(e.target.value) || 0;
         saveData();
         renderPortfolioOverview();
       }
     });
   });
+
+  // Alternar estado Activo / Cerrado con un clic
+  tbody.querySelectorAll('.btn-status').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      const prod = state.products.find((p) => p.id === e.target.dataset.toggleId);
+      if (prod) {
+        prod.closed = !prod.closed;
+        if (prod.closed) prod.currentValue = 0;
+        saveData();
+        renderPortfolioOverview();
+      }
+    });
+  });
 }
+
 
 export function populateFilters() {
   const yearSel = document.getElementById('filterYear');
@@ -209,21 +236,32 @@ export function openModal(mode) {
   document.getElementById('modalTitle').textContent =
     mode === 'create' ? 'Nueva Entrada (F1)' : 'Modificar Entrada (F2)';
 
+  const editingEntry =
+    mode === 'edit' && state.selectedEntryId
+      ? state.entries.find((e) => e.id === state.selectedEntryId)
+      : null;
+
+  // Al crear, ocultar productos cerrados; al editar, incluir el de la entrada aunque esté cerrado
+  const availableProducts = state.products.filter(
+    (p) => !p.closed || (editingEntry && p.id === editingEntry.productId)
+  );
+
   const prodSelect = document.getElementById('entryProduct');
   prodSelect.innerHTML =
     '<option value="__NEW__">+ Nuevo producto...</option>' +
-    state.products.map((p) => `<option value="${p.id}">${p.name} (${p.platform})</option>`).join('');
+    availableProducts
+      .map((p) => `<option value="${p.id}">${p.name} (${p.platform})</option>`)
+      .join('');
 
   if (mode === 'create') {
     document.getElementById('entryForm').reset();
-    document.getElementById('entryDate').value = new Date().toISOString().split('T')[0];
-    prodSelect.value = state.products.length > 0 ? state.products[0].id : '__NEW__';
-  } else if (mode === 'edit' && state.selectedEntryId) {
-    const entry = state.entries.find((e) => e.id === state.selectedEntryId);
-    document.getElementById('entryDate').value = entry.date;
-    document.getElementById('entryAmount').value = entry.amount;
-    document.getElementById('entryType').value = entry.type;
-    prodSelect.value = entry.productId;
+    document.getElementById('entryDate').value = new Date().toISOString().split('T');
+    prodSelect.value = availableProducts.length > 0 ? availableProducts.id : '__NEW__';
+  } else if (editingEntry) {
+    document.getElementById('entryDate').value = editingEntry.date;
+    document.getElementById('entryAmount').value = editingEntry.amount;
+    document.getElementById('entryType').value = editingEntry.type;
+    prodSelect.value = editingEntry.productId;
   }
 
   handleProductChange();
@@ -256,7 +294,14 @@ export function handleProductChange() {
     nameInput.required = false;
     platInput.required = false;
     const prod = state.products.find((p) => p.id === val);
-    document.getElementById('modalCurrentValue').value = prod ? prod.currentValue || 0 : 0;
+    const isClosed = Boolean(prod?.closed);
+
+    const valInput = document.getElementById('modalCurrentValue');
+    valInput.value = isClosed ? 0 : prod?.currentValue || 0;
+    valInput.disabled = isClosed;
+
+    document.getElementById('modalProductClosed').checked = isClosed;
+
     updateProductStats(val);
     statsBox.classList.add('visible');
   }
@@ -322,13 +367,22 @@ export function saveEntry(e) {
   if (productId === '__NEW__') {
     const name = document.getElementById('newProdName').value.trim();
     const platform = document.getElementById('newProdPlatform').value.trim();
-    const newProd = { id: 'prod_' + Date.now(), name, platform, currentValue: 0 };
+    const newProd = {
+      id: 'prod_' + Date.now(),
+      name,
+      platform,
+      currentValue: 0,
+      closed: false
+    };
     state.products.push(newProd);
     productId = newProd.id;
   } else {
     const prod = state.products.find((p) => p.id === productId);
     if (prod) {
-      prod.currentValue = parseFloat(document.getElementById('modalCurrentValue').value) || 0;
+      prod.closed = document.getElementById('modalProductClosed').checked;
+      prod.currentValue = prod.closed
+        ? 0
+        : parseFloat(document.getElementById('modalCurrentValue').value) || 0;
     }
   }
 
